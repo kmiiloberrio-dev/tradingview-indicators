@@ -1,0 +1,1827 @@
+//The volume profile code is by @LuxAlgo all the contributions for him, i just added Tradinglatino strategy and other indicators
+// i got the ma calclation and function from  @OskarGallard 
+// © Lupown
+//@version=4
+///////////////////////////////////////////////////////////////////////////////////////////////////
+//// STUDY
+///////////////////////////////////////////////////////////////////////////////////////////////////
+study(title          = "Multiple indicators + TL Alerts [LUPOWN]", shorttitle= "Multiple Indicators [LPWN]", overlay = true,max_bars_back=1000,max_lines_count=500,max_boxes_count = 200)
+     
+     
+// EMAS
+show_Emas = input(true, title="--------- Show EMAS ---------")
+
+
+MA1 = input(10, minval=1, title="MA1",inline="ma1")
+string type1 = input('EMA', title='Type MA1', options=["SMA", "EMA", "WMA", "LSMA", "ALMA", "HMA", "KAMA", "RMA", "DEMA", "TEMA", "VWMA", "SWMA", "Wild"],inline="ma1")
+MA2 = input(55, minval=1, title="MA2",inline="ma2")
+string type2 = input('EMA', title='Type MA2', options=["SMA", "EMA", "WMA", "LSMA", "ALMA", "HMA", "KAMA", "RMA", "DEMA", "TEMA", "VWMA", "SWMA", "Wild"],inline="ma2")
+MA3 = input(100, minval=1, title="MA3",inline="ma3")
+string type3 = input('EMA', title='Type MA3', options=["SMA", "EMA", "WMA", "LSMA", "ALMA", "HMA", "KAMA", "RMA", "DEMA", "TEMA", "VWMA", "SWMA", "Wild"],inline="ma3")
+MA4 = input(200, minval=1, title="MA4",inline="ma4")
+string type4 = input('EMA', title='Type MA4', options=["SMA", "EMA", "WMA", "LSMA", "ALMA", "HMA", "KAMA", "RMA", "DEMA", "TEMA", "VWMA", "SWMA", "Wild"],inline="ma4")
+
+
+// Kaufman's Adaptive Moving Average - Fast and Slow Ends
+fastK = 0.666 // KAMA Fast End
+slowK = 0.645 // KAMA Slow End
+kama(x, t)=>
+    dist   = abs(x[0] - x[1])
+    signal = abs(x - x[t])
+    noise  = sum(dist, t)
+    effr   = noise!=0 ? signal/noise : 1
+    sc     = pow(effr*(fastK - slowK) + slowK,2)
+    kama   = x
+    kama  := nz(kama[1]) + sc*(x - nz(kama[1]))
+    kama
+
+ma(MAType, MASource, MAPeriod) =>
+    if MAPeriod > 0
+        if MAType == "SMA"
+            sma(MASource, MAPeriod)
+        else if MAType == "LSMA"
+            linreg(MASource, MAPeriod, 0)
+        else if MAType == "EMA"
+            ema(MASource, MAPeriod)
+        else if MAType == "WMA"
+            wma(MASource, MAPeriod)
+        else if MAType == "RMA"
+            rma(MASource, MAPeriod)
+        else if MAType == "HMA"
+            hma(MASource, MAPeriod)
+        else if MAType == "DEMA"
+            e = ema(MASource, MAPeriod)
+            2 * e - ema(e, MAPeriod)
+        else if MAType == "TEMA"
+            e = ema(MASource, MAPeriod)
+            3 * (e - ema(e, MAPeriod)) + ema(ema(e, MAPeriod), MAPeriod)
+        else if MAType == "VWMA"
+            vwma(MASource, MAPeriod)
+        else if MAType == "ALMA"
+            alma(MASource, MAPeriod, 6, .85)
+        else if MAType == "SWMA" 
+            swma(MASource)
+        else if MAType == "KAMA"
+            kama(MASource, MAPeriod)
+        else if MAType == "Wild"
+            wild = MASource
+            wild := nz(wild[1]) + (MASource - nz(wild[1])) / MAPeriod 
+
+st = input(false, title="ShowTrend")
+upTrend = ma(type3,close,MA3) >= ma(type4,close,MA4)
+downTrend = ma(type3,close,MA3) < ma(type4,close,MA4)
+
+plot(show_Emas ? ma(type1,close,MA1) : na, color=#3b78eb, linewidth=1, title="MA1")
+plot(show_Emas ? ma(type2,close,MA2) : na, color=#B45F04, linewidth=2, title="MA2")
+t1 = plot(show_Emas ? ma(type3,close,MA3) : na, color= st and upTrend ? color.lime : st and downTrend ? color.red : #b83d27 , linewidth=1, title="MA3")
+t2 = plot(show_Emas ? ma(type4,close,MA4) : na, color= st and upTrend ? color.lime : st and downTrend ? color.red :#b83d27, linewidth=3, title="MA4")
+
+fill(t1,t2,color = st ? color.gray : na, transp=75, title = "trend fill")
+plotshape(st and upTrend ? upTrend : na, title="Conservative Buy Entry Triangle",style=shape.triangleup, location=location.bottom, color=color.lime, transp=0, offset=0)
+plotshape(st and downTrend ? downTrend : na, title="Conservative Short Entry Triangle",style=shape.triangledown, location=location.top, color=color.red, transp=0, offset=0)
+
+
+
+ShowBuySellArrows = input(true, title= "-----------Show Buy/Sell TL--------")
+ShowBuySellArrowsK = input(false, title= "-----------Show Buy/Sell Koncorde--------")
+show_whale = input(false, title= "----------- Show whale  -----------")
+show_admin = input (false, title = "-------- Show whale invert --------")
+//////////////////////////////////////////////////////
+/////////VWAP
+/////////////////////////////////////////////////////
+
+displayVW = input(false, title="------Show VWAP--------")
+vwp = displayVW ? vwap : na
+plot( vwp, color=#ffff1f,  title="VWAP", linewidth=2)
+
+
+//////////////
+///// END VWAP
+////////////
+
+
+//////////////////////////////////////////////////////
+/////////PARABOLIC SAR
+/////////////////////////////////////////////////////
+show_ps = input (false,title="----------Show Parabolic SAR---------")
+start = input(0.02)
+increment = input(0.02)
+maximum = input(0.2, "Max Value")
+out = sar(start, increment, maximum)
+plot(show_ps? out : na, "ParabolicSAR", style=plot.style_cross, color=#2962FF)
+
+
+//////////////
+///// END PARABOLIC SAR
+////////////
+
+//////////////////
+// KONCORDE
+///////////////////
+
+
+show_K = input(false, title = "---------------Show Koncorde-------------")
+srcTprice = input(ohlc4, title="Fuente para Precio Total")
+srcMfi = input(hlc3, title="Fuente MFI", group="Money Flow Index")
+tprice=srcTprice
+
+//lengthEMA = input(255, minval=1)
+
+scaleK= input(8,title = "Koncorde scale")
+m=input(15, title="Media Exponencial")
+longitudPVI=input(90, title="Longitud PVI")
+longitudNVI=input(90, title="Longitud NVI")
+longitudMFI=input(14, title="Longitud MFI")
+multK=input(2.0, title="Multiplicador para derivacion estandar" , group="Bollinger Oscillator")
+boLength=input(25, title="Calculation length ", group="Bollinger Oscillator" )
+mult=input(2.0, title="Multiplicador para derivacion estandar" , group="Bollinger Oscillator")
+pvim = ema(pvi, m)
+pvimax = highest(pvim, longitudPVI)
+pvimin = lowest(pvim, longitudPVI)
+oscp = (pvi - pvim) * 100/ (pvimax - pvimin)
+
+nvim = ema(nvi, m)
+nvimax = highest(nvim, longitudNVI)
+nvimin = lowest(nvim, longitudNVI)
+azul =( (nvi - nvim) * 100/ (nvimax - nvimin) )
+
+xmf = mfi(srcMfi, longitudMFI)
+        
+// Bands Calculation
+basisK = sma(tprice, boLength) //Find the 20-day moving average average (n1 + n2 ... + n20)/20
+devK = mult * stdev(tprice, boLength) //Find the standard deviation of the 20-days
+upperK = basisK + devK //Upper Band = 20-day Moving Average + (2 x standard deviation of the 20-days)
+lowerK = basisK - devK //Lower Band = 20-day Moving Average - (2 x standard deviation of the 20-days)
+OB1 = (upperK + lowerK) / 2.0
+OB2 = upperK - lowerK
+
+BollOsc = ((tprice - OB1) / OB2 ) * 100 // percent b
+xrsi = rsi(tprice, 14)
+
+calc_stoch(src, length,smoothFastD ) =>
+    ll = lowest(low, length)
+    hh = highest(high, length)
+    k = 100 * (src - ll) / (hh - ll)
+    sma(k, smoothFastD)
+
+stoc = calc_stoch(tprice, 21, 3)
+marron =( (xrsi + xmf + BollOsc + (stoc / 3))/2 )
+verde = (marron + oscp) 
+media = ema(marron,m) 
+bandacero= 0
+//scaleK1 = (ni/scale)/scaleK
+
+buy_cK = crossover(marron,media)
+sell_cK = crossunder(marron,media)
+plotshape(ShowBuySellArrowsK and buy_cK, "Buy", shape.triangleup, location.belowbar, color.green, text="Buy", textcolor = color.green)
+plotshape(ShowBuySellArrowsK and sell_cK, "Sell", shape.triangledown, location.abovebar, color.red, text="Sell",textcolor = color.red)
+
+
+
+
+//////////////////
+// KONCORDE
+///////////////////
+
+
+//////////////////////////
+////BOLLINGER BANDS
+////////////////////
+show_BB = input(false, title="--------- Show Bollinger ---------")
+lengthB = input(20, minval=1)
+srcB = input(close, title="Source")
+//mult = input(2.0, minval=0.001, maxval=50, title="StdDev")
+basis = sma(srcB, lengthB)
+dev = mult * stdev(srcB, lengthB)
+upper = basis + dev
+lower = basis - dev
+offsetB = input(0, "Offset", type = input.integer, minval = -500, maxval = 500)
+plot(show_BB ? basis : na, "Basis", color=#919191, offset = offsetB)
+p1 = plot(show_BB ? upper : na , "Upper", color=#ff0059, offset = offsetB)
+p2 = plot(show_BB ? lower: na, "Lower", color=#ff0059, offset = offsetB)
+fill(p1, p2, title = "Background", color=color.rgb(255, 205, 222, 95))
+
+
+
+//////
+///
+///////
+
+
+
+/////////////
+////ATR 
+//////////////
+
+show_ATR = input(false,title="--------------Show ATR------------")
+source_ATR = input(close, title="Source ATR")
+length_ATR = input(14, minval=1, title="Period")
+multiplier = input(1.6, minval=0.1, step=0.1, title="Multiplier")
+shortStopLoss = source_ATR + atr(length_ATR) * multiplier
+longStopLoss = source_ATR - atr(length_ATR) * multiplier
+plot(show_ATR ? shortStopLoss : na, color=color.gray, transp=0, linewidth=1, style=plot.style_stepline, title="Short Stop Loss")
+plot(show_ATR ?longStopLoss: na, color=color.gray, transp=0, linewidth=1, style=plot.style_stepline, title="Long Stop Loss")
+
+
+
+
+
+///////////
+//////END ATR
+//////////////////
+
+
+//////////////////
+////  ICHIMOKU
+///////////////////////////
+
+
+//Input
+show_ich = input ( false , title = "--------Show Ichimoku---------")
+tenkanIN = input(9, minval= 1, title="Tenkan"),
+kijunIN = input(26, minval= 1, title="Kijun")
+spanBIN = input(52, minval= 1, title="Span B"),
+chikouIN = input(26, minval= 1, title="Chikou")
+srcI = input(close, title="Source")
+
+ 
+//Setting
+donchian(len) => avg(lowest(len), highest(len))
+tenkan = donchian(tenkanIN)
+kijun = donchian(kijunIN)
+spanA = avg(tenkan, kijun)
+spanB = donchian(spanBIN)
+chikou = srcI, offset = -chikouIN
+ 
+Color00 = #f57f17//Orange
+Color02 = #f57f17ff//Orange 100%
+Color10 = #006400//Green
+Color13 = #388e3c//Light Green
+Color20 = #8B0000//Red
+Color23 = #b71c1c//Light Red
+Color30 = #ffffff//White
+ 
+colorKumo = spanA > spanB ? Color10 : Color20
+ 
+//Drawing
+plot(show_ich ? tenkan : na, title="Tenkan", color= Color10)
+plot(show_ich ? kijun : na, title="Kijun", color= Color20)
+plot(show_ich ? srcI : na, offset = -chikouIN + 1, title="Chikou", color= Color00
+	 , linewidth = 2)
+kumoA = plot(show_ich ? spanA : na, offset = chikouIN - 1, title="Span A", color= na)
+kumoB = plot(show_ich ? spanB : na , offset = chikouIN - 1, title="Span B", color= na)
+fill(kumoA, kumoB, title="Kumo", color = show_ich ? colorKumo : na,
+	 transp= 75)
+	 
+//////////////////
+///// END ICHIMOKU
+///////////////////////////	 
+	 
+
+//////////////////
+/////BUYSELLSIGNALS
+///////////////////////////
+
+
+//Momentum
+sz  = linreg(close - avg(avg(highest(high, 20), lowest(low, 20)), sma(close, 20)), 20, 0)
+//ADX
+adxlen   =  14 //input(14,    title = "ADX Smoothing")
+dilen    = 14  //input(14,    title = "DI Length") 
+keyLevel =  23 //input(23,    title = "Key level for ADX")
+
+dirmov(len) =>
+	up = change(high)
+	down = -change(low)
+	truerange = rma(tr, len)
+	plus = fixnan(100 * rma(up > down and up > 0 ? up : 0, len) / truerange)
+	minus = fixnan(100 * rma(down > up and down > 0 ? down : 0, len) / truerange)
+	[plus, minus]
+
+adx(dilen, adxlen) => 
+	[plus, minus] = dirmov(dilen)
+	sum = plus + minus
+	adx = 100 * rma(abs(plus - minus) / (sum == 0 ? 1 : sum), adxlen)
+	[adx, plus, minus]
+
+[adxValue, diplus, diminus] = adx(dilen, adxlen)
+
+lbR = input(title="Pivot Lookback Right", defval=1)
+lbL = input(title="Pivot Lookback Left", defval=1)
+
+//FUNCTIONS
+plFound(osc) => na(pivotlow(osc, lbL, lbR)) ? false : true
+phFound(osc) => na(pivothigh(osc, lbL, lbR)) ? false : true
+
+//pivots ADX AND SZ
+
+//buy_cond= plFound(sz) and adxValue < adxValue[1] ? true : phFound(adxValue) and sz >= sz[1] and sz<0 ? true : false
+
+//sell_cond= phFound(sz) and adxValue < adxValue[1] ? true : phFound(adxValue) and sz < sz[1] and sz>0? true : false
+
+buy_cond1= plFound(sz) and adxValue < adxValue[1] ? true : false
+buy_cond2=  phFound(adxValue) and sz >= sz[1] and sz<0 ? true : false
+
+buy_c=buy_cond1 or buy_cond2
+
+
+sell_cond1=phFound(sz) and adxValue < adxValue[1] ? true : false
+sell_cond2=phFound(adxValue) and sz < sz[1] and sz>0? true : false
+
+sell_c = sell_cond1 or sell_cond2
+
+///ALERTAS
+
+
+
+    
+
+plotshape(ShowBuySellArrows and buy_c, "Buy", shape.square, location.belowbar, color.green, text="Buy",textcolor= color.green)
+plotshape(ShowBuySellArrows and sell_c, "Sell", shape.square, location.abovebar, color.red, text="Sell",textcolor = color.red)
+
+
+
+
+
+/////////////////////////////////////////////
+//////////////Whale detector by blackcat
+////////////////////////////////////
+
+//functions
+xrf(values, length) =>
+    r_val = float(na)
+    if length >= 1
+        for i = 0 to length by 1
+            if na(r_val) or not na(values[i])
+                r_val  :=  values[i]
+                r_val
+    r_val
+
+xsa(src,len,wei) =>
+    sumf = 0.0
+    ma = 0.0
+    out = 0.0
+    sumf  :=  nz(sumf[1]) - nz(src[len]) + src
+    ma  :=  na(src[len]) ? na : sumf/len
+    out  :=  na(out[1]) ? ma : (src*wei+out[1]*(len-wei))/len
+    out
+
+//trend follower algorithm
+var2 = xrf(low,1)
+var3 = xsa(abs(low-var2),3,1)/xsa(max(low-var2,0),3,1)*100
+var4 = ema(iff(close*1.2,var3*10,var3/10),3)
+var5 = lowest(low,30)
+var6 = highest(var4,30)
+var7 = iff(lowest(low,58),1,0)
+var8 = ema(iff(low<=var5,(var4+var6*2)/2,0),3)/618*var7
+
+//whale pump detector
+
+
+///////////
+
+var21 = xrf(high,1)
+var31 = xsa(abs(high-var21),3,1)/xsa(max(high-var21,0),3,1)*100
+var41 = ema(iff(close*1.2,var31*10,var31/10),3)
+var51 = highest(high,30)
+var61 = lowest(var41,30)
+var71 = iff(highest(high,58),1,0)
+var81 = ema(iff(high>=var51,(var41+var61*2)/2,0),3)/618*var71
+
+aguas = phFound(var81) ? true : false
+
+///////////
+
+whale = phFound(var8) ? true : false
+
+plotshape(aguas and show_admin ?true :na,text="❗",style=shape.arrowdown,color=color.red,location=location.abovebar )
+
+
+plotshape(whale and show_whale ?true :na,style=shape.triangleup,text="🐳",color=color.blue,location=location.belowbar)
+
+
+
+//////////////////////////
+///////// DIVERGENCIAS
+/////////////////////
+
+
+
+show_div=input(false,title="------Divergencias--------")
+//lbR = input(title="Pivot Lookback Right", defval=1)
+//lbL = input(title="Pivot Lookback Left", defval=1)
+rangeUpper = input(title="Max of Lookback Range", defval=60)
+rangeLower = input(title="Min of Lookback Range", defval=1)
+plotBull = input(title="Plot Bullish", defval=true)
+plotHiddenBull = input(title="Plot Hidden Bullish", defval=true)
+plotBear = input(title="Plot Bearish", defval=true)
+plotHiddenBear = input(title="Plot Hidden Bearish", defval=true)
+
+
+bearColor = #ff0000
+bullColor = #1bff00 
+hiddenBullColor =  #a4ff99 
+hiddenBearColor = #ff9e9e
+textColor = color.white
+noneColor = color.new(color.white, 100)
+
+//FUNCTIONS
+
+
+_inRange(cond) =>
+    bars = barssince(cond == true)
+    rangeLower <= bars and bars <= rangeUpper
+    
+    
+_findDivRB(osc)=>
+    // Osc: Higher Low
+    oscHL = osc[lbR] > valuewhen(plFound(osc), osc[lbR], 1) and _inRange(plFound(osc)[1])
+
+    // Price: Lower Low
+    priceLL = low[lbR] < valuewhen(plFound(osc), low[lbR], 1)
+
+    bullCond = plotBull and priceLL and oscHL and plFound(osc)
+
+
+    //------------------------------------------------------------------------------
+    // Hidden Bullish
+
+    // Osc: Lower Low
+    oscLL = osc[lbR] < valuewhen(plFound(osc), osc[lbR], 1) and _inRange(plFound(osc)[1])
+
+    // Price: Higher Low
+    priceHL = low[lbR] > valuewhen(plFound(osc), low[lbR], 1)
+
+    hiddenBullCond = plotHiddenBull and priceHL and oscLL and plFound(osc)
+
+
+
+    //------------------------------------------------------------------------------
+    // Regular Bearish
+
+    // Osc: Lower High
+    oscLH = osc[lbR] < valuewhen(phFound(osc), osc[lbR], 1) and _inRange(phFound(osc)[1])
+
+    // Price: Higher High
+    priceHH = high[lbR] > valuewhen(phFound(osc), high[lbR], 1)
+
+    bearCond = plotBear and priceHH and oscLH and phFound(osc)
+
+
+
+    //------------------------------------------------------------------------------
+    // Hidden Bearish
+
+    // Osc: Higher High
+    oscHH = osc[lbR] > valuewhen(phFound(osc), osc[lbR], 1) and _inRange(phFound(osc)[1])
+
+    // Price: Lower High
+    priceLH = high[lbR] < valuewhen(phFound(osc), high[lbR], 1)
+
+    hiddenBearCond = plotHiddenBear and priceLH and oscHH and phFound(osc)
+    
+    [bullCond,hiddenBullCond,bearCond,hiddenBearCond]
+    
+
+
+
+[sz_bullCond,sz_hiddenBullCond,sz_bearCond,sz_hiddenBearCond]=_findDivRB(sz)
+
+
+foundDivBSZ = plFound(sz)  and show_div ? true : false 
+colordivBSZ = sz_bullCond ? bullColor : sz_hiddenBullCond ? hiddenBullColor : noneColor
+
+textoDivBull = sz_bullCond ? " | Divergencia alcista" : sz_hiddenBullCond ? " | Divergencia alcista oculta | " : ""
+
+foundDivBeSZ = phFound(sz)  and show_div ? true : false
+colordivBeSZ = sz_bearCond ? bearColor : sz_hiddenBearCond ? hiddenBearColor : noneColor
+
+textoDivBear = sz_bearCond ? " | Divergencia bajista | " : sz_hiddenBearCond ? " | Divergencia bajista oculta | " : ""
+
+foundDiv = plFound(sz) and sz_bullCond or plFound(sz) and sz_hiddenBullCond or phFound(sz) and sz_bearCond or phFound(sz) and sz_hiddenBearCond ? true : false
+plot(
+	 foundDivBSZ ? low[lbR] : na,
+	 offset=-lbR,
+	 title="Regular Bullish",
+	 linewidth=1,
+	 color=colordivBSZ,
+	 transp=0
+	 )
+plot(
+	 foundDivBeSZ ? high[lbR] : na,
+	 offset=-lbR,
+	 title="Regular Bullish",
+	 linewidth=1,
+	 color=colordivBeSZ,
+	 transp=0
+	 )
+
+
+
+
+
+
+///////////////////////////
+////////////
+////////////////////////
+if (sell_c or buy_c or whale or foundDiv)
+    alert = sell_c ? "Sell alert " : buy_c ? "Buy alert " : ""
+    whaleT = whale ? " 🐳 " : ""
+    alert( whaleT + alert + textoDivBear + textoDivBull + tostring(close), freq = alert.freq_once_per_bar_close )
+/////////////////////////////////
+///////////
+/////////////////////////
+/////////
+///// END SIGNALS
+/////
+
+
+
+/////////////////////////////////
+/////////// VOLUME PROFIOLE 
+/////////////////////////
+
+//|—————————————————————————————————————————————————————————
+//| Name: 			V-Profile
+//| Version: 		1.3
+//| Date: 			11.11.2020
+//| Autor: 			Haft (by EulerMethod)
+//| i modified the VP so it looks like premium VP
+//|—————————————————————————————————————————————————————————
+//| Tradingview: 	https://ru.tradingview.com/u/EulerMethod
+//|—————————————————————————————————————————————————————————
+
+
+
+
+///////////////////////
+//                   //
+//     INTERFACE     //
+//                   //
+///////////////////////
+show_vp = input(true, title = "---------------  Show Volume profile ------------")
+//MOD'S
+bool 	input_delta 	= input( title = "Delta",			type = input.bool,		defval = true )
+bool 	input_poc   	= false
+
+//FRAME: Y
+int  	input_depth 	= input( title = "Depth [10; 1k]",	type = input.integer,   defval = 200,   minval = 10, 	maxval = 1000 )
+bool 	input_range 	= false
+float   input_persent   = 5
+bool 	input_log10 	= false
+
+//FRAME: X
+int 	input_amp 		= input( title = "Amp [10; 100]",	type = input.integer,   defval = 50,	minval = 10,	maxval = 100 )
+int 	input_size 		= input( title = "Dot size",		type = input.integer,   defval = 1,		minval = 1,		maxval = 3 )
+
+//PALETTE
+color input_c_info  = input( title = "Color: Info",  		type = input.color, 	defval = color.new(#FFFFFF,  0) ) //EM color White
+color input_c_frame = input( title = "Color: Frame", 		type = input.color, 	defval = color.new(#617793,  0) ) //EM color Palladium
+color input_c_total = input( title = "Color: Σ",     		type = input.color, 	defval = color.new(#b2b5be,  0) ) //EM color Palladium
+color input_c_plus  = input( title = "Color: Δ +",   		type = input.color, 	defval = color.new(#9FF159,  0) ) //EM color Green
+color input_c_minus = input( title = "Color: Δ –",   		type = input.color, 	defval = color.new(#f44336,  0) ) //EM color red
+
+far = input(50,"far")
+
+
+	 
+//////////////////
+//              //
+//     DATA     //
+//              //
+//////////////////
+
+
+//// FRAME 
+
+//ath & atl
+float FH = na, float FL = na, float rn = na
+
+//true depth
+int depth = input_depth
+
+//first bar time
+var int time_first = time
+
+	 
+//// ROWS DATA
+
+var 	R  = array.new_float(50,     0) //Row (price)
+var 	TV = array.new_float(50,     0) //Total: Value
+var 	TA = array.new_int  (50,     0) //Total: Amp
+var 	TP = array.new_bool (50, false) //Total: Peak
+float   TM = 1   						//Total: Max Value
+var 	DV = array.new_float(50,     0) //Delta: Value
+var 	DA = array.new_int  (50,     0) //Delta: Amp
+var 	DP = array.new_bool (50, false) //Delta: Peak
+
+
+//// POC
+
+float POC  	 = na
+float POC_DP = na
+float POC_DN = na
+
+
+//// INTERFACE
+
+//text
+string txt_top = input_range ? "+ " + tostring(input_persent, "0.0") + " %" : " " + (input_amp < 20 ? "H ⇅ L" : "HIGH ⇅ LOW")
+string txt_btm = "❮  " + tostring(input_depth)
+
+//size
+var dot_size = input_size == 1 ? size.tiny : input_size == 2 ? size.small : size.normal
+
+//invisible
+var color c_opacity = color.new(color.white, 100)
+
+
+
+
+////////////////////////
+//                    //
+//     EXCEPTIONS     //
+//                    //
+////////////////////////
+
+bool exception_no_volume    = nz(volume) == 0
+bool exception_excess_depth = na(close[input_depth])
+bool exception_bug_minute   = timeframe.period == "1"
+
+
+//// EXCEPTION HANDLING
+
+//no volume
+if exception_no_volume
+	txt_top := input_amp < 20 ? "🚫" : "🚫 NO VOLUME"
+
+//depth correction
+if exception_excess_depth and barstate.islast
+	for i = 2 to input_depth
+		if na(close[i])
+			depth := i, break
+	txt_btm := "❮ " + tostring(depth)
+
+
+
+
+//////////////////////////
+//                      //
+//     CALCULATIONS     //
+//                      //
+//////////////////////////
+
+
+//// FRAME
+
+//ath & atl
+if input_range
+	rn := hl2 * input_persent / 100
+	FH := hl2 + rn
+	FL := hl2 - rn
+else
+	FH := highest(high, depth)
+	FL :=  lowest(low,  depth)
+
+//time_first bar time
+if barstate.isfirst
+    time_first := time
+
+
+//// FUNCTIONS
+
+//row axis
+float axis_step = (input_log10 ? log10(FH / FL) : FH - FL) / 50 //step (logarithmic or linear)
+Axis(i) => input_log10 ? pow(10, log10(FL) + i * axis_step) : FL + i * axis_step // i steps
+
+//drawing histogram
+Histogram(i) => 
+    string T = (input_delta and array.get(DP, i)) or (not input_delta and array.get(TP, i)) ? "◄ " : "    "
+    if array.get(TV, i) > 0
+		int D_ = array.get(DA, i)
+        for j = array.get(TA, i) to 0
+            T := T + (input_delta ? (D_ > j ? "•" : "· ") : "•")
+    else
+        T := "    ‧"
+    T
+
+//row color
+Color(m) => input_delta and array.get(DA, m) != 0 ? (array.get(DV, m) > 0 ? input_c_plus : input_c_minus) : input_c_total
+
+
+//// MAIN
+
+if barstate.islast and not exception_no_volume and show_vp
+
+	//rows conformity to prices
+	for i = 0 to 49
+		array.set(R, i, Axis(i + 0.5)) //offset row axis — row-hight / 2
+	
+	//full depth
+	for i = 0 to depth - 1
+        
+		int C = 0 //denominator
+		TS = array.new_float(50, 0) //divisible volumes
+		DS = array.new_float(50, 0) //divisible deltas
+     
+        //set TS & DS and denominator
+        for j = 0 to 49
+            float R_ = array.get(R, j)
+            if high[i] > R_ and R_ > low[i]
+                C := C + 1
+                array.set(TS, j, nz(volume[i]))
+                if input_delta
+                    array.set(DS, j, nz(volume[i]) * (close[i] > R_ ? 1 : -1))
+     
+        if C != 0 
+            
+            //if High or Low out of range
+            float K = 1 //cutoff factor [0; 1]
+            if input_range and (high[i] > Axis(50) or low[i] < Axis(0))
+                K := C / ((high[i] - low[i]) / (input_log10 ? pow(10, axis_step) : axis_step))
+           
+            //rows value
+            for j = 0 to 49
+                array.set(TV, j, array.get(TV, j) + (array.get(TS, j) * K / C ))
+				if input_delta
+				    array.set(DV, j, array.get(DV, j) + (array.get(DS, j) * K / C ))
+		
+        array.clear(TS), array.clear(DS)
+
+	TM := array.max(TV)
+	
+	for i = 0 to 49
+        
+        //amplitude
+        array.set(TA, i, floor(input_amp * array.get(TV, i) / TM))
+		
+		if not input_delta
+            //peak 4 < X > 4
+			float T_ = array.get(TV, i)
+			bool p4 = i - 4 <  0 ? true : T_ > array.get(TV, i - 4)
+			bool p3 = i - 3 <  0 ? true : T_ > array.get(TV, i - 3)
+			bool p2 = i - 2 <  0 ? true : T_ > array.get(TV, i - 2)
+			bool p1 = i - 1 <  0 ? true : T_ > array.get(TV, i - 1)
+			bool n1 = i + 1 > 49 ? true : T_ > array.get(TV, i + 1)
+			bool n2 = i + 2 > 49 ? true : T_ > array.get(TV, i + 2)
+			bool n3 = i + 3 > 49 ? true : T_ > array.get(TV, i + 3)
+			bool n4 = i + 4 > 49 ? true : T_ > array.get(TV, i + 4)
+			array.set(TP, i, p4 and p3 and p2 and p1 and n1 and n2 and n3 and n4)
+			
+		else
+            //amplitude
+            array.set(DA, i, floor(array.get(TA, i) * abs(array.get(DV, i)) / array.get(TV, i)))
+            
+            //peak 4 < X > 4
+            float D_ = abs(array.get(DV, i))
+			bool p4 = i - 4 <  0 ? true : D_ > abs(array.get(DV, i - 4))
+			bool p3 = i - 3 <  0 ? true : D_ > abs(array.get(DV, i - 3))
+			bool p2 = i - 2 <  0 ? true : D_ > abs(array.get(DV, i - 2))
+			bool p1 = i - 1 <  0 ? true : D_ > abs(array.get(DV, i - 1))
+			bool n1 = i + 1 > 49 ? true : D_ > abs(array.get(DV, i + 1))
+			bool n2 = i + 2 > 49 ? true : D_ > abs(array.get(DV, i + 2))
+			bool n3 = i + 3 > 49 ? true : D_ > abs(array.get(DV, i + 3))
+			bool n4 = i + 4 > 49 ? true : D_ > abs(array.get(DV, i + 4))
+			array.set(DP, i, p4 and p3 and p2 and p1 and n1 and n2 and n3 and n4)
+
+	//POC
+	if input_poc
+    
+        float sum = 0, float mass = 0
+        for i = 0 to 49
+            float V_ = array.get(TV, i)
+            sum  := sum  + V_
+            mass := mass + V_ * array.get(R, i)
+        
+        POC := nz(mass / sum, na)
+        
+        if input_delta and not exception_bug_minute 
+            float seller_sum = 0, float seller_mass = 0
+            float buyer_sum  = 0, float buyer_mass  = 0
+            
+            for i = 0 to 49
+                float R_ = array.get(R,  i)
+                float D_ = array.get(DV, i)
+                seller_sum  := seller_sum  + (D_ < 0 ? D_      : 0)
+                seller_mass := seller_mass + (D_ < 0 ? D_ * R_ : 0)
+                buyer_sum   := buyer_sum   + (D_ > 0 ? D_      : 0)
+                buyer_mass  := buyer_mass  + (D_ > 0 ? D_ * R_ : 0)
+            
+            POC_DN := nz(seller_mass / seller_sum, na)
+            POC_DP := nz(buyer_mass  / buyer_sum,  na)
+
+
+
+
+//////////////////////
+//                  //
+//     BUILDING     //
+//                  //
+//////////////////////
+
+
+//// POC
+
+var line line_POC_DN = line.new(bar_index, na, bar_index, na, style=line.style_dashed, color=input_c_minus)
+var line line_POC_DP = line.new(bar_index, na, bar_index, na, style=line.style_dashed, color=input_c_plus)
+var line line_POC 	 = line.new(bar_index, na, bar_index, na, style=line.style_dashed, color=input_c_info)
+
+
+//// INTERFACE
+
+var label label_top = label.new(bar_index, FH,  text=txt_top, style=label.style_label_lower_left, textcolor=input_c_info, color=c_opacity, size=size.normal)
+var label label_btm = label.new(bar_index, FL,  text=txt_btm, style=label.style_label_upper_left, textcolor=input_c_info, color=c_opacity, size=size.normal)
+
+
+// FRAME
+
+var line line_FH = line.new(bar_index, FH, bar_index, FH, color=input_c_frame, style=line.style_dashed)
+var line line_FL = line.new(bar_index, FL, bar_index, FL, color=input_c_frame, style=line.style_dashed)
+var line line_FS = line.new(bar_index, FL, bar_index, FL, color=input_c_frame, style=line.style_dashed)
+
+
+//// HISTOGRAM
+
+int 	r1 = time_close
+float	r2 = close
+string	r3 = ""
+color	r4 = input_c_total
+var		r5 = xloc.bar_time
+var		r6 = yloc.price
+color	r7 = c_opacity
+var		r8 = label.style_label_right
+var		r9 = dot_size
+
+var label R01 = label.new(r1, r2, text=r3, textcolor=r4, xloc=r5, yloc=r6, color=r7, style=r8, size=r9)
+var label R02 = label.new(r1, r2, text=r3, textcolor=r4, xloc=r5, yloc=r6, color=r7, style=r8, size=r9)
+var label R03 = label.new(r1, r2, text=r3, textcolor=r4, xloc=r5, yloc=r6, color=r7, style=r8, size=r9)
+var label R04 = label.new(r1, r2, text=r3, textcolor=r4, xloc=r5, yloc=r6, color=r7, style=r8, size=r9)
+var label R05 = label.new(r1, r2, text=r3, textcolor=r4, xloc=r5, yloc=r6, color=r7, style=r8, size=r9)
+var label R06 = label.new(r1, r2, text=r3, textcolor=r4, xloc=r5, yloc=r6, color=r7, style=r8, size=r9)
+var label R07 = label.new(r1, r2, text=r3, textcolor=r4, xloc=r5, yloc=r6, color=r7, style=r8, size=r9)
+var label R08 = label.new(r1, r2, text=r3, textcolor=r4, xloc=r5, yloc=r6, color=r7, style=r8, size=r9)
+var label R09 = label.new(r1, r2, text=r3, textcolor=r4, xloc=r5, yloc=r6, color=r7, style=r8, size=r9)
+var label R10 = label.new(r1, r2, text=r3, textcolor=r4, xloc=r5, yloc=r6, color=r7, style=r8, size=r9)
+var label R11 = label.new(r1, r2, text=r3, textcolor=r4, xloc=r5, yloc=r6, color=r7, style=r8, size=r9)
+var label R12 = label.new(r1, r2, text=r3, textcolor=r4, xloc=r5, yloc=r6, color=r7, style=r8, size=r9)
+var label R13 = label.new(r1, r2, text=r3, textcolor=r4, xloc=r5, yloc=r6, color=r7, style=r8, size=r9)
+var label R14 = label.new(r1, r2, text=r3, textcolor=r4, xloc=r5, yloc=r6, color=r7, style=r8, size=r9)
+var label R15 = label.new(r1, r2, text=r3, textcolor=r4, xloc=r5, yloc=r6, color=r7, style=r8, size=r9)
+var label R16 = label.new(r1, r2, text=r3, textcolor=r4, xloc=r5, yloc=r6, color=r7, style=r8, size=r9)
+var label R17 = label.new(r1, r2, text=r3, textcolor=r4, xloc=r5, yloc=r6, color=r7, style=r8, size=r9)
+var label R18 = label.new(r1, r2, text=r3, textcolor=r4, xloc=r5, yloc=r6, color=r7, style=r8, size=r9)
+var label R19 = label.new(r1, r2, text=r3, textcolor=r4, xloc=r5, yloc=r6, color=r7, style=r8, size=r9)
+var label R20 = label.new(r1, r2, text=r3, textcolor=r4, xloc=r5, yloc=r6, color=r7, style=r8, size=r9)
+var label R21 = label.new(r1, r2, text=r3, textcolor=r4, xloc=r5, yloc=r6, color=r7, style=r8, size=r9)
+var label R22 = label.new(r1, r2, text=r3, textcolor=r4, xloc=r5, yloc=r6, color=r7, style=r8, size=r9)
+var label R23 = label.new(r1, r2, text=r3, textcolor=r4, xloc=r5, yloc=r6, color=r7, style=r8, size=r9)
+var label R24 = label.new(r1, r2, text=r3, textcolor=r4, xloc=r5, yloc=r6, color=r7, style=r8, size=r9)
+var label R25 = label.new(r1, r2, text=r3, textcolor=r4, xloc=r5, yloc=r6, color=r7, style=r8, size=r9)
+var label R26 = label.new(r1, r2, text=r3, textcolor=r4, xloc=r5, yloc=r6, color=r7, style=r8, size=r9)
+var label R27 = label.new(r1, r2, text=r3, textcolor=r4, xloc=r5, yloc=r6, color=r7, style=r8, size=r9)
+var label R28 = label.new(r1, r2, text=r3, textcolor=r4, xloc=r5, yloc=r6, color=r7, style=r8, size=r9)
+var label R29 = label.new(r1, r2, text=r3, textcolor=r4, xloc=r5, yloc=r6, color=r7, style=r8, size=r9)
+var label R30 = label.new(r1, r2, text=r3, textcolor=r4, xloc=r5, yloc=r6, color=r7, style=r8, size=r9)
+var label R31 = label.new(r1, r2, text=r3, textcolor=r4, xloc=r5, yloc=r6, color=r7, style=r8, size=r9)
+var label R32 = label.new(r1, r2, text=r3, textcolor=r4, xloc=r5, yloc=r6, color=r7, style=r8, size=r9)
+var label R33 = label.new(r1, r2, text=r3, textcolor=r4, xloc=r5, yloc=r6, color=r7, style=r8, size=r9)
+var label R34 = label.new(r1, r2, text=r3, textcolor=r4, xloc=r5, yloc=r6, color=r7, style=r8, size=r9)
+var label R35 = label.new(r1, r2, text=r3, textcolor=r4, xloc=r5, yloc=r6, color=r7, style=r8, size=r9)
+var label R36 = label.new(r1, r2, text=r3, textcolor=r4, xloc=r5, yloc=r6, color=r7, style=r8, size=r9)
+var label R37 = label.new(r1, r2, text=r3, textcolor=r4, xloc=r5, yloc=r6, color=r7, style=r8, size=r9)
+var label R38 = label.new(r1, r2, text=r3, textcolor=r4, xloc=r5, yloc=r6, color=r7, style=r8, size=r9)
+var label R39 = label.new(r1, r2, text=r3, textcolor=r4, xloc=r5, yloc=r6, color=r7, style=r8, size=r9)
+var label R40 = label.new(r1, r2, text=r3, textcolor=r4, xloc=r5, yloc=r6, color=r7, style=r8, size=r9)
+var label R41 = label.new(r1, r2, text=r3, textcolor=r4, xloc=r5, yloc=r6, color=r7, style=r8, size=r9)
+var label R42 = label.new(r1, r2, text=r3, textcolor=r4, xloc=r5, yloc=r6, color=r7, style=r8, size=r9)
+var label R43 = label.new(r1, r2, text=r3, textcolor=r4, xloc=r5, yloc=r6, color=r7, style=r8, size=r9)
+var label R44 = label.new(r1, r2, text=r3, textcolor=r4, xloc=r5, yloc=r6, color=r7, style=r8, size=r9)
+var label R45 = label.new(r1, r2, text=r3, textcolor=r4, xloc=r5, yloc=r6, color=r7, style=r8, size=r9)
+var label R46 = label.new(r1, r2, text=r3, textcolor=r4, xloc=r5, yloc=r6, color=r7, style=r8, size=r9)
+var label R47 = label.new(r1, r2, text=r3, textcolor=r4, xloc=r5, yloc=r6, color=r7, style=r8, size=r9)
+var label R48 = label.new(r1, r2, text=r3, textcolor=r4, xloc=r5, yloc=r6, color=r7, style=r8, size=r9)
+var label R49 = label.new(r1, r2, text=r3, textcolor=r4, xloc=r5, yloc=r6, color=r7, style=r8, size=r9)
+var label R50 = label.new(r1, r2, text=r3, textcolor=r4, xloc=r5, yloc=r6, color=r7, style=r8, size=r9)
+
+
+//// SHIFT & REFRECH
+
+if barstate.islast and show_vp
+    
+    //Frame: limits
+    tl  =  far *(time - time[1])
+ 
+	int time_start = max(time[depth - 1], time_first)
+	int time_finish = time_close + tl
+    
+    
+    //// INTERFACE
+    
+	label.set_xloc(label_top, time_finish, xloc.bar_time)
+	label.set_y(label_top, FH)
+
+	label.set_xloc(label_btm, time_finish, xloc.bar_time)
+	label.set_y(label_btm, FL)
+	label.set_text(label_btm, txt_btm)
+
+    
+    //// POC
+    
+    line.set_xloc(line_POC, time_start, time_finish, xloc.bar_time)
+	line.set_y1(line_POC, POC)
+	line.set_y2(line_POC, POC)
+
+    line.set_xloc(line_POC_DN, time_start, time_finish, xloc.bar_time)
+	line.set_y1(line_POC_DN, POC_DN)
+	line.set_y2(line_POC_DN, POC_DN)
+	
+	line.set_xloc(line_POC_DP, time_start, time_finish, xloc.bar_time)
+	line.set_y1(line_POC_DP, POC_DP)
+	line.set_y2(line_POC_DP, POC_DP)
+	
+	
+    //// FRAME
+	
+	line.set_xloc(line_FH, time_start, time_finish, xloc.bar_time)
+	line.set_y1(line_FH, FH)
+	line.set_y2(line_FH, FH)
+
+	line.set_xloc(line_FL, time_start, time_finish, xloc.bar_time)
+	line.set_y1(line_FL, FL)
+	line.set_y2(line_FL, FL)
+	
+	line.set_xloc(line_FS, time_start, time_start, xloc.bar_time)
+	line.set_y1(line_FS, FH)
+	line.set_y2(line_FS, FL)
+    
+    
+    //// HISTOGRAM
+    
+	label.set_x(R01, time_finish), label.set_y(R01, array.get(R,  0)), label.set_text(R01, Histogram( 0)), label.set_textcolor(R01, Color( 0)) 
+	label.set_x(R02, time_finish), label.set_y(R02, array.get(R,  1)), label.set_text(R02, Histogram( 1)), label.set_textcolor(R02, Color( 1))
+	label.set_x(R03, time_finish), label.set_y(R03, array.get(R,  2)), label.set_text(R03, Histogram( 2)), label.set_textcolor(R03, Color( 2))
+	label.set_x(R04, time_finish), label.set_y(R04, array.get(R,  3)), label.set_text(R04, Histogram( 3)), label.set_textcolor(R04, Color( 3))
+	label.set_x(R05, time_finish), label.set_y(R05, array.get(R,  4)), label.set_text(R05, Histogram( 4)), label.set_textcolor(R05, Color( 4))
+	label.set_x(R06, time_finish), label.set_y(R06, array.get(R,  5)), label.set_text(R06, Histogram( 5)), label.set_textcolor(R06, Color( 5))
+	label.set_x(R07, time_finish), label.set_y(R07, array.get(R,  6)), label.set_text(R07, Histogram( 6)), label.set_textcolor(R07, Color( 6))
+	label.set_x(R08, time_finish), label.set_y(R08, array.get(R,  7)), label.set_text(R08, Histogram( 7)), label.set_textcolor(R08, Color( 7))
+	label.set_x(R09, time_finish), label.set_y(R09, array.get(R,  8)), label.set_text(R09, Histogram( 8)), label.set_textcolor(R09, Color( 8))
+	label.set_x(R10, time_finish), label.set_y(R10, array.get(R,  9)), label.set_text(R10, Histogram( 9)), label.set_textcolor(R10, Color( 9))
+	label.set_x(R11, time_finish), label.set_y(R11, array.get(R, 10)), label.set_text(R11, Histogram(10)), label.set_textcolor(R11, Color(10))
+	label.set_x(R12, time_finish), label.set_y(R12, array.get(R, 11)), label.set_text(R12, Histogram(11)), label.set_textcolor(R12, Color(11))
+	label.set_x(R13, time_finish), label.set_y(R13, array.get(R, 12)), label.set_text(R13, Histogram(12)), label.set_textcolor(R13, Color(12))
+	label.set_x(R14, time_finish), label.set_y(R14, array.get(R, 13)), label.set_text(R14, Histogram(13)), label.set_textcolor(R14, Color(13))
+	label.set_x(R15, time_finish), label.set_y(R15, array.get(R, 14)), label.set_text(R15, Histogram(14)), label.set_textcolor(R15, Color(14))
+	label.set_x(R16, time_finish), label.set_y(R16, array.get(R, 15)), label.set_text(R16, Histogram(15)), label.set_textcolor(R16, Color(15))
+	label.set_x(R17, time_finish), label.set_y(R17, array.get(R, 16)), label.set_text(R17, Histogram(16)), label.set_textcolor(R17, Color(16))
+	label.set_x(R18, time_finish), label.set_y(R18, array.get(R, 17)), label.set_text(R18, Histogram(17)), label.set_textcolor(R18, Color(17))
+	label.set_x(R19, time_finish), label.set_y(R19, array.get(R, 18)), label.set_text(R19, Histogram(18)), label.set_textcolor(R19, Color(18))
+	label.set_x(R20, time_finish), label.set_y(R20, array.get(R, 19)), label.set_text(R20, Histogram(19)), label.set_textcolor(R20, Color(19))
+	label.set_x(R21, time_finish), label.set_y(R21, array.get(R, 20)), label.set_text(R21, Histogram(20)), label.set_textcolor(R21, Color(20))
+	label.set_x(R22, time_finish), label.set_y(R22, array.get(R, 21)), label.set_text(R22, Histogram(21)), label.set_textcolor(R22, Color(21))
+	label.set_x(R23, time_finish), label.set_y(R23, array.get(R, 22)), label.set_text(R23, Histogram(22)), label.set_textcolor(R23, Color(22))
+	label.set_x(R24, time_finish), label.set_y(R24, array.get(R, 23)), label.set_text(R24, Histogram(23)), label.set_textcolor(R24, Color(23))
+	label.set_x(R25, time_finish), label.set_y(R25, array.get(R, 24)), label.set_text(R25, Histogram(24)), label.set_textcolor(R25, Color(24))
+	label.set_x(R26, time_finish), label.set_y(R26, array.get(R, 25)), label.set_text(R26, Histogram(25)), label.set_textcolor(R26, Color(25))
+	label.set_x(R27, time_finish), label.set_y(R27, array.get(R, 26)), label.set_text(R27, Histogram(26)), label.set_textcolor(R27, Color(26))
+	label.set_x(R28, time_finish), label.set_y(R28, array.get(R, 27)), label.set_text(R28, Histogram(27)), label.set_textcolor(R28, Color(27))
+	label.set_x(R29, time_finish), label.set_y(R29, array.get(R, 28)), label.set_text(R29, Histogram(28)), label.set_textcolor(R29, Color(28))
+	label.set_x(R30, time_finish), label.set_y(R30, array.get(R, 29)), label.set_text(R30, Histogram(29)), label.set_textcolor(R30, Color(29))
+	label.set_x(R31, time_finish), label.set_y(R31, array.get(R, 30)), label.set_text(R31, Histogram(30)), label.set_textcolor(R31, Color(30))
+	label.set_x(R32, time_finish), label.set_y(R32, array.get(R, 31)), label.set_text(R32, Histogram(31)), label.set_textcolor(R32, Color(31))
+	label.set_x(R33, time_finish), label.set_y(R33, array.get(R, 32)), label.set_text(R33, Histogram(32)), label.set_textcolor(R33, Color(32))
+	label.set_x(R34, time_finish), label.set_y(R34, array.get(R, 33)), label.set_text(R34, Histogram(33)), label.set_textcolor(R34, Color(33))
+	label.set_x(R35, time_finish), label.set_y(R35, array.get(R, 34)), label.set_text(R35, Histogram(34)), label.set_textcolor(R35, Color(34))
+	label.set_x(R36, time_finish), label.set_y(R36, array.get(R, 35)), label.set_text(R36, Histogram(35)), label.set_textcolor(R36, Color(35))
+	label.set_x(R37, time_finish), label.set_y(R37, array.get(R, 36)), label.set_text(R37, Histogram(36)), label.set_textcolor(R37, Color(36))
+	label.set_x(R38, time_finish), label.set_y(R38, array.get(R, 37)), label.set_text(R38, Histogram(37)), label.set_textcolor(R38, Color(37))
+	label.set_x(R39, time_finish), label.set_y(R39, array.get(R, 38)), label.set_text(R39, Histogram(38)), label.set_textcolor(R39, Color(38))
+	label.set_x(R40, time_finish), label.set_y(R40, array.get(R, 39)), label.set_text(R40, Histogram(39)), label.set_textcolor(R40, Color(39))
+	label.set_x(R41, time_finish), label.set_y(R41, array.get(R, 40)), label.set_text(R41, Histogram(40)), label.set_textcolor(R41, Color(40))
+	label.set_x(R42, time_finish), label.set_y(R42, array.get(R, 41)), label.set_text(R42, Histogram(41)), label.set_textcolor(R42, Color(41))
+	label.set_x(R43, time_finish), label.set_y(R43, array.get(R, 42)), label.set_text(R43, Histogram(42)), label.set_textcolor(R43, Color(42))
+	label.set_x(R44, time_finish), label.set_y(R44, array.get(R, 43)), label.set_text(R44, Histogram(43)), label.set_textcolor(R44, Color(43))
+	label.set_x(R45, time_finish), label.set_y(R45, array.get(R, 44)), label.set_text(R45, Histogram(44)), label.set_textcolor(R45, Color(44))
+	label.set_x(R46, time_finish), label.set_y(R46, array.get(R, 45)), label.set_text(R46, Histogram(45)), label.set_textcolor(R46, Color(45))
+	label.set_x(R47, time_finish), label.set_y(R47, array.get(R, 46)), label.set_text(R47, Histogram(46)), label.set_textcolor(R47, Color(46))
+	label.set_x(R48, time_finish), label.set_y(R48, array.get(R, 47)), label.set_text(R48, Histogram(47)), label.set_textcolor(R48, Color(47))
+	label.set_x(R49, time_finish), label.set_y(R49, array.get(R, 48)), label.set_text(R49, Histogram(48)), label.set_textcolor(R49, Color(48))
+	label.set_x(R50, time_finish), label.set_y(R50, array.get(R, 49)), label.set_text(R50, Histogram(49)), label.set_textcolor(R50, Color(49))
+
+
+
+
+/////////////////
+///////© EulerMethod HAFT 2020
+///////////
+
+
+
+
+
+
+
+
+
+
+
+
+/////////////////
+/////otro VP by @ LonesomeTheBlue
+///////////
+
+show_vp2 = input(false, title = "------------Show 2 Volume Proifle------------")
+bbars = input(title="Number of Bars", defval = 150, minval = 1, maxval = 500)
+cnum = input(title="Row Size", defval = 24, minval = 5, maxval = 100)
+percent = input(70., title="Value Area Volume %", minval = 0, maxval = 100)
+poc_color1 = input(defval = #ff0000, title = "POC", inline = "poc")
+poc_width = input(defval = 2, title = "", minval = 1, maxval = 5, inline = "poc")
+vup_color = input(defval = color.new(color.blue, 30), title = "Value Area Up")
+vdown_color = input(defval = color.new(color.orange, 30), title = "Value Area Down")
+up_color = input(defval = color.new(color.blue, 75), title = "UP Volume")
+down_color = input(defval = color.new(color.orange, 75), title = "Down Volume")
+
+top = highest(bbars)
+bot = lowest(bbars)
+dist = (top - bot) / 500
+step = (top - bot) / cnum
+
+// calculate/keep channel levels
+levels1 = array.new_float(cnum + 1)
+for x = 0 to cnum
+    array.set(levels1, x, bot + step * x)
+
+// get the volume if there is intersection
+get_vol(y11, y12, y21, y22, height, vol)=> nz(max(min(max(y11, y12), max(y21, y22)) - max(min(y11, y12), min(y21, y22)), 0) * vol / height)
+    
+if barstate.islast and show_vp2
+    // calculate/get volume for each channel and candle
+    volumes = array.new_float(cnum * 2, 0.)
+    for bars = 0 to bbars - 1
+        body_top = max(close[bars], open[bars])
+        body_bot = min(close[bars], open[bars])
+        itsgreen = close[bars] >= open[bars]
+        
+        topwick = high[bars] - body_top
+        bottomwick = body_bot - low[bars]
+        body = body_top - body_bot
+        
+        bodyvol = body * volume[bars] / (2 * topwick + 2 * bottomwick + body)
+        topwickvol = 2 * topwick * volume[bars] / (2 * topwick + 2 * bottomwick + body)
+        bottomwickvol = 2 * bottomwick * volume[bars] / (2 * topwick + 2 * bottomwick + body)
+        for x = 0 to cnum - 1
+            array.set(volumes, x, array.get(volumes, x) + 
+                                  (itsgreen ? get_vol(array.get(levels1, x), array.get(levels1, x + 1), body_bot, body_top, body, bodyvol) : 0) + 
+                                  get_vol(array.get(levels1, x), array.get(levels1, x + 1), body_top, high[bars], topwick, topwickvol) / 2 + 
+                                  get_vol(array.get(levels1, x), array.get(levels1, x + 1), body_bot, low[bars], bottomwick, bottomwickvol) / 2)
+            array.set(volumes, x + cnum, array.get(volumes, x + cnum) + 
+                                  (itsgreen ? 0 : get_vol(array.get(levels1, x), array.get(levels1, x + 1), body_bot, body_top, body, bodyvol)) + 
+                                  get_vol(array.get(levels1, x), array.get(levels1, x + 1), body_top, high[bars], topwick, topwickvol) / 2 + 
+                                  get_vol(array.get(levels1, x), array.get(levels1, x + 1), body_bot, low[bars], bottomwick, bottomwickvol) / 2)
+
+    totalvols = array.new_float(cnum, 0.)
+    for x = 0 to cnum - 1
+        array.set(totalvols, x, array.get(volumes, x) + array.get(volumes, x + cnum))
+    
+    int poc = array.indexof(totalvols, array.max(totalvols))
+    
+    // calculate value area
+    totalmax = array.sum(totalvols) * percent / 100.
+    va_total = array.get(totalvols, poc)
+    int up = poc
+    int down = poc
+    for x = 0 to cnum - 1
+        if va_total >= totalmax
+            break
+        uppervol = up < cnum - 1 ? array.get(totalvols, up + 1) : 0.
+        lowervol = down > 0 ? array.get(totalvols, down - 1) : 0.
+        if uppervol == 0 and lowervol == 0
+            break
+        if uppervol >= lowervol
+            va_total += uppervol
+            up += 1
+        else
+            va_total += lowervol
+            down -= 1
+        
+    maxvol = array.max(totalvols)
+    for x = 0 to cnum * 2 - 1
+        array.set(volumes, x, array.get(volumes, x) * bbars / (3 * maxvol))
+    
+    
+    // Draw VP rows
+    var vol_bars = array.new_box(cnum * 2, na)
+    for x = 0 to cnum - 1
+        box.delete(array.get(vol_bars, x))
+        box.delete(array.get(vol_bars, x + cnum))
+        array.set(vol_bars, x, box.new(bar_index - bbars + 1, array.get(levels1, x + 1) - dist, 
+                                       bar_index - bbars + 1 + round(array.get(volumes, x)), array.get(levels1, x) + dist, 
+                                       border_width = 0, 
+                                       bgcolor = x >= down and x <= up ? vup_color : up_color))
+        array.set(vol_bars, x + cnum, box.new(bar_index - bbars + 1 + round(array.get(volumes, x)), array.get(levels1, x + 1) - dist, 
+                                       bar_index - bbars + 1 + round(array.get(volumes, x)) + round(array.get(volumes, x + cnum)), array.get(levels1, x) + dist, 
+                                       border_width = 0, 
+                                       bgcolor = x >= down and x <= up ? vdown_color : down_color))
+    
+    // Draw POC line
+    var line poc_line = na
+    line.delete(poc_line)
+    poc_line := line.new(bar_index - bbars + 1, (array.get(levels1, poc) + array.get(levels1, poc + 1)) / 2, 
+                         bar_index - bbars + 2, (array.get(levels1, poc) + array.get(levels1, poc + 1)) / 2, 
+                         extend = extend.right, 
+                         color = poc_color1, 
+                         width = poc_width)
+
+                         
+                         
+//PIVOTES
+////////////////////////////////////////////////////////////////////////////////
+//
+// ====== ABOUT THIS INDICATOR
+//
+//  - All your common Pivot types in one nifty bundle.
+//
+//    • Have up to three pivot sets.
+//    • Each pivot set has it's own resolution option.
+//    • Whatever flavour suits your tastes - each pivot set can be of a
+//      different type if you truly wish.
+//
+// ====== SOURCES and CREDITS
+//
+//  - All included pivot calcs were sourced from:
+//
+//    • https://www.tradingview.com/support/solutions/43000521824-pivot-points-standard/
+//    • Using the new 'time_close()' function, so thankyou Pine dev's <3
+//
+// ====== REASON FOR STUDY
+//
+//  - To practice making scalable code for working with similar datasets.
+//
+//    • all the reasons
+//
+// ====== DISCLAIMER
+//
+//    Any trade decisions you make are entirely your own responsibility.
+//    I've made an effort to squash all the bugs, but you never know!
+//
+////////////////////////////////////////////////////////////////////////////////
+
+////////////////////////////////////////////////////////////////////////////////
+//                                                                            //
+//                       ====== OPTION LIST VARS ======                       //
+//                                                                            //
+//    * Setting up option list variables outside of the actual input can      //
+//      make them much easier to work with if any comparison checks are       //
+//      required, and can help keep subsequent code clean and readable.       //
+//                                                                            //
+////////////////////////////////////////////////////////////////////////////////
+
+// -- verbose resolution options.
+i_res0  = "1 Hour",     i_res1  = "2 Hour",     i_res2  = "3 Hour"
+i_res3  = "4 Hour",     i_res4  = "6 Hour",     i_res5  = "12 Hour"
+i_res6  = "1 Day",      i_res7  = "5 Day",      i_res8  = "1 Week"
+i_res9  = "1 Month",    i_res10 = "3 Month",    i_res11 = "6 Month"
+i_res12 = "1 Year"
+
+// -- pivot options
+i_piv0  = "Traditional",    i_piv1 = "Fibonacci"
+i_piv2  = "Woodie",         i_piv3 = "Classic"
+i_piv4  = "Demark",         i_piv5 = "Camarilla"
+i_piv6  = "Fibonacci Extended"
+
+// -- line style options.
+i_line0 = "Solid",      i_line1 = "Dotted",     i_line2 = "Dashed"
+
+////////////////////////////////////////////////////////////////////////////////
+//                                                                            //
+//                     ====== VAR and ARRAY PRESET ======                     //
+//                                                                            //
+////////////////////////////////////////////////////////////////////////////////
+
+// -- Preset INT for maximum amount of S|R levels for any single pivot type.
+// NOTE - this variable should only be changed if:
+//  • you extend a pivot to have more than 5 levels of S|R
+//  • you add a new pivot type wiith more than 5 levels of S|R
+var int i_maxLevels = 5
+
+// -- Preset INT for max length of pivot arrays [PP + S max + R max]
+//  * NOTE: should not be changed.
+var int i_maxLength = 1 + ( i_maxLevels * 2 )
+
+// -- Initiate arrays to contain INT variables used in drawing function
+//    settings, we fill these at the end of the INPUTS section.
+var int[] i_settingsA = array.new_int(3, 0)
+//var int[] i_settingsB = array.new_int(3, 0)
+//var int[] i_settingsC = array.new_int(3, 0)
+
+////////////////////////////////////////////////////////////////////////////////
+//                                                                            //
+//                            ====== INPUTS ======                            //
+//                                                                            //
+//                     * Using the new 'inline' feature *                     //
+//                                                                            //
+////////////////////////////////////////////////////////////////////////////////
+
+// -- Pivots A Main Settings
+
+INP_resolutionA = input( i_res6,    " ",                    inline = "line1",   group = "Pivot Set A Settings",
+      options = [ i_res0, i_res1, i_res2, i_res3, i_res4, i_res5,
+      i_res6, i_res7, i_res8, i_res9, i_res10, i_res11, i_res12
+      ])
+INP_showPivotsA = input( false,      " Show Pivots Set A",   inline = "line1",   group = "Pivot Set A Settings",
+      type = input.bool
+      )
+INP_supportsA   = input( 2,         " ",                    inline = "line2",   group = "Pivot Set A Settings",
+      type = input.integer, minval = 0, maxval = i_maxLevels
+      )
+INP_flavourA    = input( i_piv1,    "S# ",                  inline = "line2",   group = "Pivot Set A Settings",
+      options = [ i_piv0, i_piv1, i_piv2, i_piv3, i_piv4, i_piv5, i_piv6
+      ])
+INP_resistsA    = input( 2,         " R#",                  inline = "line2",   group = "Pivot Set A Settings",
+      type = input.integer, minval = 0, maxval = i_maxLevels
+      )
+
+// -- Pivots B Main Settings
+
+//INP_resolutionB = input( i_res8,    " ",                    inline = "line3",   group = "Pivot Set B Settings",
+//      options = [ i_res0, i_res1, i_res2, i_res3, i_res4, i_res5,
+//      i_res6, i_res7, i_res8, i_res9, i_res10, i_res11, i_res12
+//      ])
+//INP_showPivotsB = input( false,     " Show Pivots Set B",   inline = "line3",   group = "Pivot Set B Settings",
+//      type = input.bool
+//      )
+//INP_supportsB   = input( 2,         " ",                    inline = "line4",   group = "Pivot Set B Settings",
+//      type = input.integer, minval = 0, maxval = i_maxLevels
+//      )
+//INP_flavourB    = input( i_piv1,    "S# ",                  inline = "line4",   group = "Pivot Set B Settings",
+//      options = [ i_piv0, i_piv1, i_piv2, i_piv3, i_piv4, i_piv5, i_piv6
+//      ])
+//INP_resistsB    = input( 2,         " R#",                  inline = "line4",   group = "Pivot Set B Settings",
+//      type = input.integer, minval = 0, maxval = i_maxLevels
+//      )
+
+// -- Pivots C Main Settings
+
+//INP_resolutionC = input( i_res9,    " ",                    inline = "line5",   group = "Pivot Set C Settings",
+//      options = [ i_res0, i_res1, i_res2, i_res3, i_res4, i_res5,
+//    i_res6, i_res7, i_res8, i_res9, i_res10, i_res11, i_res12
+//      ])
+//INP_showPivotsC = input( false,     " Show Pivots Set C",   inline = "line5",   group = "Pivot Set C Settings",
+//      type = input.bool
+//      )
+//INP_supportsC   = input( 2,         " ",                    inline = "line6",   group = "Pivot Set C Settings",
+//      type = input.integer, minval = 0, maxval = i_maxLevels
+//      )
+//INP_flavourC    = input( i_piv1,    "S# ",                  inline = "line6",   group = "Pivot Set C Settings",
+////      options = [ i_piv0, i_piv1, i_piv2, i_piv3, i_piv4, i_piv5, i_piv6
+//      ])
+//INP_resistsC    = input( 2,         " R#",                  inline = "line6",   group = "Pivot Set C Settings",
+//      type = input.integer, minval = 0, maxval = i_maxLevels
+//      )
+
+// -- price labels
+
+INP_showPrice   = input( false,         " ",                inline = "line7",   group = "Price Labels",
+      type = input.bool
+      )
+INP_priceColour = input( color.gray,    " Text Colour",     inline = "line7",   group = "Price Labels",
+      type = input.color
+      )
+
+// -- styling options
+
+INP_supportStyle    = input(i_line0,        " ",            inline = "line8",   group = "Styling Options",
+      options = [ i_line0, i_line1, i_line2
+      ])
+INP_supportColour   = input( color.green,   " S Levels",    inline = "line8",   group = "Styling Options",
+      type = input.color
+      )
+
+INP_pivotStyle      = input(i_line0,        " ",            inline = "line9",   group = "Styling Options",
+      options = [ i_line0, i_line1, i_line2
+      ])
+INP_pivotColour     = input( color.silver,  " P Levels",    inline = "line9",   group = "Styling Options",
+      type = input.color
+      )
+
+INP_resistStyle     = input(i_line0,        " ",            inline = "line10",  group = "Styling Options",
+      options = [ i_line0, i_line1, i_line2
+      ])
+INP_resistColour    = input( color.red,     " R Levels",    inline = "line10",  group = "Styling Options",
+      type = input.color
+      )
+
+// -- drawing settings for selection A
+array.set(i_settingsA, 0, INP_showPivotsA ? 1 : 0)
+array.set(i_settingsA, 1, INP_supportsA)
+array.set(i_settingsA, 2, INP_resistsA)
+// -- drawing settings for selection B
+//array.set(i_settingsB, 0, INP_showPivotsB ? 1 : 0)
+//array.set(i_settingsB, 1, INP_supportsB)
+//array.set(i_settingsB, 2, INP_resistsB)
+// -- drawing settings for selection C
+//array.set(i_settingsC, 0, INP_showPivotsC ? 1 : 0)
+//array.set(i_settingsC, 1, INP_supportsC)
+//array.set(i_settingsC, 2, INP_resistsC)
+
+////////////////////////////////////////////////////////////////////////////////
+//                                                                            //
+//                          ====== FUNCTIONS ======                           //
+//                                                                            //
+////////////////////////////////////////////////////////////////////////////////
+
+f_getResolution( _inputResolution ) =>
+    //  string  _inputResolution : user selected resolution input
+    // () Description:
+    //  - Resolver for custom resolution input selection, converts input to
+    //    compatible return string for security, output is also used for less
+    //    verbose label text options.
+    // Dependencies:
+    //  - i_res1, i_res2, i_res3, i_res4, i_res5, i_res6
+    //  - i_res7, i_res8, i_res9, i_res10, i_res11, i_res12
+    // Notes:
+    //  - i_res0 excluded as it's a token placeholder for default "60".
+
+    string _r       = _inputResolution  // a more ternary challenge friendly var
+    string _default = "60"              // if i_res0 was input, or failure.
+
+    // compare input to determine proper string return for security calls.
+    _return = _r == i_res1 ? "120"  : _r == i_res2 ? "180"  : _r == i_res3 ? "240"  :
+              _r == i_res4 ? "360"  : _r == i_res5 ? "720"  : _r == i_res6 ? "1D"   :
+              _r == i_res7 ? "5D"   : _r == i_res8 ? "1W"   : _r == i_res9 ? "1M"   :
+              _r == i_res10 ? "3M"  : _r == i_res11 ? "6M"  : _r == i_res12 ? "12M" : _default
+
+f_getLineStyle( _inputStyle ) =>
+    //  string  _inputStyle : user selected style input
+    // () resolver for custom line style input selection, returns a usable
+    //    line style type.
+    // Dependencies:
+    //  - i_line1, i_line2
+    // Notes:
+    //  * i_line0 omitted as we default to 'line.style_solid' anyway
+
+    // compare input to determine proper line style to return.
+    _return = _inputStyle == i_line1 ? line.style_dotted :
+              _inputStyle == i_line2 ? line.style_dashed : line.style_solid
+
+// -- helper function for checking if a value is inside a min-max range
+f_isInsideRange(_val, _min, _max) => _val >= _min and _val <= _max
+
+f_getPivotTraditional( _prevHigh, _prevLow, _prevClose ) =>
+    //  float   _prevHigh | _prevLow | _prevClose : HTF security OHLC values
+    // () calculates a pivot set and assigns to proper array indexes for return.
+    // Notes:
+    //  - f_renderPivotArray() expects float data in the following sequence..
+    //
+    //      Pivot     : [ 0 ]
+    //      Supports  : [ 1 to i_maxLevels ]
+    //      Resists   : [ ( i_maxLevels + 1 ) to i_maxLength ]
+
+    // init empty array with predefined length of i_maxLength
+    var float[] _array = array.new_float( i_maxLength, na )
+
+    // pivot level, array index [0]
+    _pivot = ( _prevHigh + _prevLow + _prevClose ) / 3
+    array.set( _array, 0, _pivot )
+
+    // support levels, array indexes [1] through [i_maxLevels]
+    array.set( _array, 1, _pivot * 2 - _prevHigh )
+    array.set( _array, 2, _pivot - ( _prevHigh - _prevLow ) )
+    array.set( _array, 3, _pivot * 2 - ( 2 * _prevHigh - _prevLow ) )
+    array.set( _array, 4, _pivot * 3 - ( 3 * _prevHigh - _prevLow ) )
+    array.set( _array, 5, _pivot * 4 - ( 4 * _prevHigh - _prevLow ) )
+
+    // resistance levels, array indexes [i_maxLevels + 1] through [i_maxLength]
+    array.set( _array, 1 + i_maxLevels, _pivot * 2 - _prevLow )
+    array.set( _array, 2 + i_maxLevels, _pivot + ( _prevHigh - _prevLow ) )
+    array.set( _array, 3 + i_maxLevels, _pivot * 2 + ( _prevHigh - 2 * _prevLow ) )
+    array.set( _array, 4 + i_maxLevels, _pivot * 3 + ( _prevHigh - 3 * _prevLow ) )
+    array.set( _array, 5 + i_maxLevels, _pivot * 4 + ( _prevHigh - 4 * _prevLow ) )
+
+    _return = _array
+
+f_getPivotFibonacci( _prevHigh, _prevLow, _prevClose ) =>
+    //  float   _prevHigh | _prevLow | _prevClose : HTF security OHLC values
+    // () calculates a pivot set and assigns to proper array indexes for return.
+    // Notes:
+    //  - f_renderPivotArray() expects float data in the following sequence..
+    //
+    //      Pivot     : [ 0 ]
+    //      Supports  : [ 1 to i_maxLevels ]
+    //      Resists   : [ ( i_maxLevels + 1 ) to i_maxLength ]
+
+    // init empty array with predefined length of i_maxLength
+    var float[] _array = array.new_float( i_maxLength, na )
+
+    // pivot level, array index [0]
+    _pivot = ( _prevHigh + _prevLow + _prevClose ) / 3
+    array.set( _array, 0, _pivot )
+
+    // support levels, array indexes [1] through [i_maxLevels]
+    array.set( _array, 1, _pivot - 0.382 * ( _prevHigh - _prevLow ) )
+    array.set( _array, 2, _pivot - 0.618 * ( _prevHigh - _prevLow ) )
+    array.set( _array, 3, _pivot - ( _prevHigh - _prevLow ) )
+
+    // resistance levels, array indexes [i_maxLevels + 1] through [i_maxLength]
+    array.set( _array, 1 + i_maxLevels, _pivot + 0.382 * ( _prevHigh - _prevLow ) )
+    array.set( _array, 2 + i_maxLevels, _pivot + 0.618 * ( _prevHigh - _prevLow ) )
+    array.set( _array, 3 + i_maxLevels, _pivot + ( _prevHigh - _prevLow ) )
+
+    _return = _array
+
+f_getPivotWoodie( _prevHigh, _prevLow, _currentOpen ) =>
+    //  float   _prevHigh | _prevLow | _currentOpen : HTF security OHLC values
+    // () calculates a pivot set and assigns to proper array indexes for return.
+    // Notes:
+    //  - f_renderPivotArray() expects float data in the following sequence..
+    //
+    //      Pivot     : [ 0 ]
+    //      Supports  : [ 1 to i_maxLevels ]
+    //      Resists   : [ ( i_maxLevels + 1 ) to i_maxLength ]
+
+    // init empty array with predefined length of i_maxLength
+    var float[] _array = array.new_float( i_maxLength, na )
+
+    // pivot level, array index [0]
+    _pivot = ( _prevHigh + _prevLow + 2 * _currentOpen ) / 4
+    array.set( _array, 0, _pivot )
+
+    // support levels, array indexes [1] through [i_maxLevels]
+    array.set( _array, 1, 2 * _pivot - _prevHigh )
+    array.set( _array, 2, _pivot - ( _prevHigh - _prevLow ) )
+    array.set( _array, 3, _prevLow - 2 * ( _prevHigh - _pivot ) )
+    array.set( _array, 4, array.get( _array, 3 ) - ( _prevHigh - _prevLow ) )
+
+    // resistance levels, array indexes [i_maxLevels + 1] through [i_maxLength]
+    array.set( _array, 1 + i_maxLevels, 2 * _pivot - _prevLow )
+    array.set( _array, 2 + i_maxLevels, _pivot + ( _prevHigh - _prevLow ) )
+    array.set( _array, 3 + i_maxLevels, _prevHigh + 2 * ( _pivot -  _prevLow ) )
+    array.set( _array, 4 + i_maxLevels, array.get( _array, 3 + i_maxLevels ) + ( _prevHigh - _prevLow ) )
+
+    _return = _array
+
+f_getPivotClassic( _prevHigh, _prevLow, _prevClose ) =>
+    //  float   _prevHigh | _prevLow | _prevClose : HTF security OHLC values
+    // () calculates a pivot set and assigns to proper array indexes for return.
+    // Notes:
+    //  - f_renderPivotArray() expects float data in the following sequence..
+    //
+    //      Pivot     : [ 0 ]
+    //      Supports  : [ 1 to i_maxLevels ]
+    //      Resists   : [ ( i_maxLevels + 1 ) to i_maxLength ]
+
+    // init empty array with predefined length of i_maxLength
+    var float[] _array = array.new_float( i_maxLength, na )
+
+    // pivot level, array index [0]
+    _pivot = ( _prevHigh + _prevLow + _prevClose ) / 3
+    array.set( _array, 0, _pivot )
+
+    // support levels, array indexes [1] through [i_maxLevels]
+    array.set( _array, 1, 2 * _pivot - _prevHigh )
+    array.set( _array, 2, _pivot - ( _prevHigh - _prevLow ) )
+    array.set( _array, 3, _pivot - 2 * ( _prevHigh - _prevLow ) )
+    array.set( _array, 4, _pivot - 3 * ( _prevHigh - _prevLow ) )
+
+    // resistance levels, array indexes [i_maxLevels + 1] through [i_maxLength]
+    array.set( _array, 1 + i_maxLevels, 2 * _pivot - _prevLow )
+    array.set( _array, 2 + i_maxLevels, _pivot + ( _prevHigh - _prevLow ) )
+    array.set( _array, 3 + i_maxLevels, _pivot + 2 * ( _prevHigh - _prevLow ) )
+    array.set( _array, 4 + i_maxLevels, _pivot + 3 * ( _prevHigh - _prevLow ) )
+
+    _return = _array
+
+f_getPivotDemark( _prevOpen, _prevHigh, _prevLow, _prevClose ) =>
+    //  float   _prevOpen | _prevHigh
+    //          _prevLow | _prevClose : HTF security OHLC values
+    // () calculates a pivot set and assigns to proper array indexes for return.
+    // Notes:
+    //  - f_renderPivotArray() expects float data in the following sequence..
+    //
+    //      Pivot     : [ 0 ]
+    //      Supports  : [ 1 to i_maxLevels ]
+    //      Resists   : [ ( i_maxLevels + 1 ) to i_maxLength ]
+
+    // init empty array with predefined length of i_maxLength
+    var float[] _array = array.new_float( i_maxLength, na )
+
+    // demark basis calc
+    var float _basis = na
+    if _prevOpen == _prevClose
+        _basis := _prevHigh + _prevLow + ( 2 * _prevClose )
+    else if _prevClose >  _prevOpen
+        _basis := ( 2 * _prevHigh ) + _prevLow + _prevClose
+    else
+        _basis := _prevHigh + ( 2 * _prevLow ) + _prevClose
+
+    // pivot level, array index [0]
+    _pivot = _basis / 4
+    array.set( _array, 0, _pivot )
+
+    // support levels, array indexes [1] through [i_maxLevels]
+    array.set( _array, 1, _basis / 2 - _prevHigh )
+
+    // resistance levels, array indexes [i_maxLevels + 1] through [i_maxLength]
+    array.set( _array, 1 + i_maxLevels, _basis / 2 - _prevLow )
+
+    _return = _array
+
+f_getPivotCamarilla( _prevHigh, _prevLow, _prevClose ) =>
+    //  float   _open | _high | _low | _close : HTF security OHLC values
+    // () calculates a pivot set and assigns to proper array indexes for return.
+    // Notes:
+    //  - f_renderPivotArray() expects float data in the following sequence..
+    //
+    //      Pivot     : [ 0 ]
+    //      Supports  : [ 1 to i_maxLevels ]
+    //      Resists   : [ ( i_maxLevels + 1 ) to i_maxLength ]
+
+    // init empty array with predefined length of i_maxLength
+    var float[] _array = array.new_float( i_maxLength, na )
+
+    // pivot level, array index [0]
+    _pivot = ( _prevHigh + _prevLow + _prevClose ) / 3
+    array.set( _array, 0, _pivot)
+
+    // support levels, array indexes [1] through [i_maxLevels]
+    array.set( _array, 1, _prevClose - 1.1 * ( _prevHigh - _prevLow ) / 12 )
+    array.set( _array, 2, _prevClose - 1.1 * ( _prevHigh - _prevLow ) / 6 )
+    array.set( _array, 3, _prevClose - 1.1 * ( _prevHigh - _prevLow ) / 4 )
+    array.set( _array, 4, _prevClose - 1.1 * ( _prevHigh - _prevLow ) / 2 )
+
+    // resistance levels, array indexes [i_maxLevels + 1] through [i_maxLength]
+    array.set( _array, 1 + i_maxLevels, _prevClose + 1.1 * ( _prevHigh - _prevLow ) / 12 )
+    array.set( _array, 2 + i_maxLevels, _prevClose + 1.1 * ( _prevHigh - _prevLow ) / 6 )
+    array.set( _array, 3 + i_maxLevels, _prevClose + 1.1 * ( _prevHigh - _prevLow ) / 4 )
+    array.set( _array, 4 + i_maxLevels, _prevClose + 1.1 * ( _prevHigh - _prevLow ) / 2 )
+
+    _return = _array
+
+f_getPivotFibonacciExt( _prevHigh, _prevLow, _prevClose ) =>
+    //  float   _open | _high | _low | _close : HTF security OHLC values
+    // () calculates a pivot set and assigns to proper array indexes for return.
+    // Notes:
+    //  - f_renderPivotArray() expects float data in the following sequence..
+    //
+    //      Pivot     : [ 0 ]
+    //      Supports  : [ 1 to i_maxLevels ]
+    //      Resists   : [ ( i_maxLevels + 1 ) to i_maxLength ]
+
+    // init empty array with predefined length of i_maxLength
+    var float[] _array = array.new_float( i_maxLength, na )
+
+    // pivot level, array index [0]
+    _pivot = ( _prevHigh + _prevLow + _prevClose ) / 3
+    array.set( _array, 0, _pivot )
+
+    // support levels, array indexes [1] through [i_maxLevels]
+    array.set( _array, 1, _pivot - 0.236 * ( _prevHigh - _prevLow ) )
+    array.set( _array, 2, _pivot - 0.382 * ( _prevHigh - _prevLow ) )
+    array.set( _array, 3, _pivot - 0.618 * ( _prevHigh - _prevLow ) )
+    array.set( _array, 4, _pivot - 0.786 * ( _prevHigh - _prevLow ) )
+    array.set( _array, 5, _pivot - ( _prevHigh - _prevLow ) )
+
+    // resistance levels, array indexes [i_maxLevels + 1] through [i_maxLength]
+    array.set( _array, 1 + i_maxLevels, _pivot + 0.236 * ( _prevHigh - _prevLow ) )
+    array.set( _array, 2 + i_maxLevels, _pivot + 0.382 * ( _prevHigh - _prevLow ) )
+    array.set( _array, 3 + i_maxLevels, _pivot + 0.618 * ( _prevHigh - _prevLow ) )
+    array.set( _array, 4 + i_maxLevels, _pivot + 0.786 * ( _prevHigh - _prevLow ) )
+    array.set( _array, 5 + i_maxLevels, _pivot + ( _prevHigh - _prevLow ) )
+
+    _return = _array
+
+f_getPivotSet( _flavour, _resolution ) =>
+    //  string  _flavour    : user input pivot type selection
+    //  string  _resolution : user input resolution selection
+    // () gets OHLC values from selected resolution, and returns requested
+    //    pivot calculation array.
+
+    // previous OHLC series for selected resolution
+    [ _prevOpen,
+      _prevHigh,
+      _prevLow,
+      _prevClose ] = security( syminfo.tickerid, _resolution, [ open[1], high[1], low[1], close[1] ], lookahead = true )
+    
+    var float _currOpen = na
+    if change( time( _resolution ) ) != 0
+        _currOpen := open
+
+    // float array to contain S|R levels for return.
+    var float[] _pivotSet = array.new_float(i_maxLength, na)
+
+    _pivotSet := _flavour == i_piv0 ? f_getPivotTraditional( _prevHigh, _prevLow, _prevClose )       :
+                 _flavour == i_piv1 ? f_getPivotFibonacci( _prevHigh, _prevLow, _prevClose )         :
+                 _flavour == i_piv2 ? f_getPivotWoodie( _prevHigh, _prevLow, _currOpen )             :
+                 _flavour == i_piv3 ? f_getPivotClassic( _prevHigh, _prevLow, _prevClose )           :
+                 _flavour == i_piv4 ? f_getPivotDemark( _prevOpen, _prevHigh, _prevLow, _prevClose ) :
+                 _flavour == i_piv5 ? f_getPivotCamarilla( _prevHigh, _prevLow, _prevClose )         : f_getPivotFibonacciExt( _prevHigh, _prevLow, _prevClose )
+
+    _pivotSet // return the float array
+
+f_renderPivotArray( _resolution, _settings, _floats, _lines, _labels ) =>
+    //  string  _resolution : user selected resolution input
+    //  int[]   _settings   : pivot specific input settings
+    //  float[] _floats     : pivot float array
+    //  line[]  _lines      : line array to hold rendered lines
+    //  label[] _labels     : label array to hold rendered labels
+    //  
+    // () Description:
+    //  - Designed for scalability and plug-n-play functionality if any new
+    //    pivot type is added, or extended.
+    //  - If a f_pivotType() function properly assigns it's float values in the
+    //    following format/order, it should be able to to render them with no
+    //    hassle at all.
+    //
+    //      Pivot     : [ 0 ]
+    //      Supports  : [ 1 to i_maxLevels ]
+    //      Resists   : [ ( i_maxLevels + 1 ) to i_maxLength ]  
+
+    // set up a few common vars for drawing using 'time' placement
+    _xloc   = xloc.bar_time
+    _x1     = valuewhen( change( time( _resolution ) ), time, 0 ) // time
+    _x2     = time_close( _resolution ) // new! Thanks pine team <3
+
+    // set up some temp vars for creating our lines and labels
+    var line    _line       = na
+    var label   _labelLeft  = na
+    var label   _labelRight = na
+    var label   _labelPrice = na
+
+    // init some readable settings variables to hold _settings data
+    var bool    _showPivot      = false
+    var int     _maxSupports    = i_maxLevels
+    var int     _maxResists     = i_maxLevels
+
+    // hand off the settings array to the vars
+    _showPivot      := array.get( _settings, 0 ) > 0 ? true : false
+    _maxSupports    := array.get( _settings, 1 )
+    _maxResists     := array.get( _settings, 2 )
+
+    // if we want to show the particular pivot set
+    // * the change() check was causing issues on extended hours intraday charts
+    //   so i have removed it for now. I will look into other options for the
+    //   next proper update.
+    if _showPivot // change( time( _resolution ) ) != 0 and _showPivot
+
+        // clean up old lines and labels before drawing our new set
+        for i = 1 to array.size( _lines ) // loop and delete 1 by 1
+            line.delete( array.get( _lines, i - 1 ) )
+
+        // the label array is dynamic length, so we..
+        if array.size( _labels ) > 0 // ..check to see if it has content..
+            for i = 1 to array.size( _labels ) // ..then loop it into the trash
+                label.delete( array.shift( _labels ) )
+
+        // check for properly populated float array
+        if array.size( _floats ) > 0 and not na( array.get( _floats, 0 ) )
+
+            // now loop through the floats
+            for i = 1 to array.size( _floats )
+
+                // don't want to bother with [i - 1] throughout the entire loop
+                _index = i - 1 // so set up a var
+
+                // if we have a valid float at the current loop index
+                if not na( array.get( _floats, _index ) )
+
+                    // common variables used in all conditions
+                    _activePrice = array.get( _floats, _index )
+                    _priceString = "• " + tostring( _activePrice, "#.#####" )
+
+                    //  IDENTIFYING SUPPORT LEVELS IN ARRAY
+                    //
+                    // support index range : [ from 1 to i_maxLevels ]
+                    if f_isInsideRange( _index, 1, i_maxLevels )
+
+                        // only draw levels : [ from 1 to _maxSupports ]
+                        if f_isInsideRange( _index, 1, _maxSupports )
+
+                            // dynamic line width based on index value
+                            int     _width  = _index > 3 ? _index - 2 : _index
+                            // use index to set level numbers on labels
+                            string  _level  = tostring( _index )
+
+                            _line   := line.new( _x1, _activePrice, _x2, _activePrice, _xloc, extend.none,
+                                                      style = f_getLineStyle( INP_supportStyle ),
+                                                      color = INP_supportColour,
+                                                      width = _width )
+
+                            _labelLeft  := label.new( _x1, _activePrice, "S" + _level + "\n", _xloc,
+                                                      style = label.style_label_left,
+                                                      color = #00000000,
+                                                      textcolor = INP_supportColour )
+
+                            _labelRight := label.new( _x2, _activePrice, "S" + _level + "\n", _xloc,
+                                                      style = label.style_label_right,
+                                                      color = #00000000,
+                                                      textcolor = INP_supportColour )
+
+                            _labelPrice := INP_showPrice ? label.new( _x2, _activePrice, _priceString, _xloc,
+                                                      style = label.style_label_left,
+                                                      color = #00000000,
+                                                      textcolor = INP_priceColour ) : na
+
+                    //  IDENTIFYING RESISTANCE LEVELS IN ARRAY
+                    //
+                    // resistance index range : [ from (1 + i_maxLevels) to (2 * i_maxLevels) ]
+                    else if f_isInsideRange( _index, 1 + i_maxLevels, 2 * i_maxLevels )
+
+                        // only draw levels : [ from (1 + i_maxLevels) to (_maxResists + i_maxLevels) ]
+                        if f_isInsideRange( _index, 1 + i_maxLevels, _maxResists + i_maxLevels )
+
+                            // adjusted _index value to attain 1/2/3 sequence for string operation
+                            int     _adjust = _index - i_maxLevels
+                            // dynamic line width based on adjusted _index value
+                            int     _width  = _adjust > 3 ? _adjust - 2 : _adjust
+                            // use adjusted index value to set proper level numbers on labels
+                            string  _level  = tostring( _adjust )
+
+                            _line   := line.new( _x1, _activePrice, _x2, _activePrice, _xloc, extend.none,
+                                                      style = f_getLineStyle( INP_resistStyle ),
+                                                      color = INP_resistColour,
+                                                      width = _width )
+
+                            _labelLeft  := label.new( _x1, _activePrice, "R" + _level + "\n", _xloc,
+                                                      style = label.style_label_left,
+                                                      color = #00000000,
+                                                      textcolor = INP_resistColour )
+
+                            _labelRight := label.new( _x2, _activePrice, "R" + _level + "\n", _xloc,
+                                                      style = label.style_label_right,
+                                                      color = #00000000,
+                                                      textcolor = INP_resistColour )
+
+                            _labelPrice := INP_showPrice ? label.new( _x2, _activePrice, _priceString, _xloc,
+                                                      style = label.style_label_left,
+                                                      color = #00000000,
+                                                      textcolor = INP_priceColour ) : na
+
+                    else // PIVOT - No identification needed, always using index 0
+
+                        _line   := line.new( _x1, _activePrice, _x2, _activePrice, _xloc, extend.none,
+                                                  style = f_getLineStyle( INP_pivotStyle ),
+                                                  color = INP_pivotColour,
+                                                  width = 3 )
+
+                        _labelLeft  := label.new( _x1, _activePrice, "PP\n", _xloc,
+                                                  style = label.style_label_left,
+                                                  color = #00000000,
+                                                  textcolor = INP_pivotColour )
+
+                        _labelRight  := label.new( _x2, _activePrice, "PP\n", _xloc,
+                                                  style = label.style_label_right,
+                                                  color = #00000000,
+                                                  textcolor = INP_pivotColour )
+
+                        _labelPrice := INP_showPrice ? label.new( _x2, _activePrice, _priceString, _xloc,
+                                                  style = label.style_label_left,
+                                                  color = #00000000,
+                                                  textcolor = INP_priceColour ) : na
+
+                    // set our line to it's respective array index
+                    array.set( _lines, _index, _line )
+
+                    // push labels into array, order doesn't matter.
+                    if not na(_labelLeft)
+                        array.push( _labels, _labelLeft )
+                    if not na(_labelRight)
+                        array.push( _labels, _labelRight )
+                    if not na(_labelPrice)
+                        array.push( _labels, _labelPrice )
+
+////////////////////////////////////////////////////////////////////////////////
+//                                                                            //
+//                   ====== SERIES, LINES and LABELS ======                   //
+//                                                                            //
+////////////////////////////////////////////////////////////////////////////////
+
+// -- selected resolutions
+string _resolutionA = f_getResolution( INP_resolutionA )
+//string _resolutionB = f_getResolution( INP_resolutionB )
+//string _resolutionC = f_getResolution( INP_resolutionC )
+
+// -- pivot series price data sets
+float[] _pivotFloatsA   = f_getPivotSet( INP_flavourA, _resolutionA )
+//float[] _pivotFloatsB   = f_getPivotSet( INP_flavourB, _resolutionB )
+//float[] _pivotFloatsC   = f_getPivotSet( INP_flavourC, _resolutionC )
+
+// -- pivot lines array A, and companion labels array
+var line[]  _pivotLinesA    = array.new_line( i_maxLength, na )
+var label[] _pivotLabelsA   = array.new_label()
+
+// -- pivot lines array B, and companion labels array
+//var line[]  _pivotLinesB    = array.new_line( i_maxLength, na )
+//var label[] _pivotLabelsB   = array.new_label()
+
+// -- pivot lines array C, and companion labels array
+//var line[]  _pivotLinesC    = array.new_line( i_maxLength, na )
+//var label[] _pivotLabelsC   = array.new_label()
+
+////////////////////////////////////////////////////////////////////////////////
+//                                                                            //
+//                     ====== DRAWING and PLOTTING ======                     //
+//                                                                            //
+////////////////////////////////////////////////////////////////////////////////
+
+// -- feed in our settings and data to the render function for set A
+f_renderPivotArray( _resolutionA, i_settingsA, _pivotFloatsA, _pivotLinesA, _pivotLabelsA )
